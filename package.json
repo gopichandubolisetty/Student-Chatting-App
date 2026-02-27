@@ -1,0 +1,21 @@
+{
+  "name": "student-chatting-platform",
+  "version": "1.0.0",
+  "description": "This is the platform where student can discuss each other",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gopichandubolisetty/Student-Chatting-App.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/gopichandubolisetty/Student-Chatting-App/issues"
+  },
+  "homepage": "https://github.com/gopichandubolisetty/Student-Chatting-App#readme"
+}
