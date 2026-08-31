@@ -5,6 +5,7 @@ const jwt = require('jsonwebtoken');
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 exports.googleLogin = async(req,res)=>{
+
     try{
         const {idToken} = req.body;
         if(!idToken){
@@ -17,6 +18,7 @@ exports.googleLogin = async(req,res)=>{
         });
 
         const payload = ticket.getPayload();
+        
         const {sub:googleId,email,name, picture:avatar,hd}= payload;
 
         const REQUIRED_DOMAIN = 'vitapstudent.ac.in';
@@ -60,6 +62,7 @@ exports.googleLogin = async(req,res)=>{
                 role:'studnet'
             }
         });
+
     }catch(error){
         console.error('Google Auth Error: ',error);
         res.status(401).json({message: 'Invalid or expired Google Token'});

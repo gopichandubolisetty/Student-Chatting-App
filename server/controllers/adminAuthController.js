@@ -1,14 +1,16 @@
 const Admin = require('../models/Admin');
 const crypto = require('crypto');
-const jwt = require('/jsonwebtokens');
+const jwt = require('jsonwebtokens');
 
 exports.requestOtp = async(req,res)=>{
+
     try{
         const {email} = req.body;
 
         if(!email || typeof email != 'string'){
-            res.status(400).json({message:"A valid email is reqired"});
+            res.status(400).json({message:'A valid email is reqired'});
         }
+
         const admin = await Admin.findOne({email:email.toLowerCase()});
 
         if(!admin){
@@ -33,19 +35,22 @@ exports.requestOtp = async(req,res)=>{
 }
 
 exports.verifyOtp = async(req,res)=>{
+
     try{
         const {email,otp} = req.body;
 
-        if(!admin || !otp){
+        if(!email || !otp){
             return res.status(400).json({message:'Email and OTP are required'});
         }
+
         const admin = await Admin.findOne({email:email.toLowerCase()});
 
         if(!admin|| admin.otp.toString()!=otp.toString()){
             return res.status(401).json({message:'Invalid email or OTP'});
         }
+
         if(new Date()>admin.otpExpires){
-            return res.status(401).json({message:"OTP has expired"});
+            return res.status(401).json({message:'OTP has expired'});
         }
         admin.otp = undefined;
         admin.otpExpires = undefined;
