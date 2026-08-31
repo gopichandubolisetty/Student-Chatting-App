@@ -59,7 +59,7 @@ exports.googleLogin = async(req,res)=>{
                 name:student.name,
                 email:student.email,
                 avatar:student.avatar,
-                role:'studnet'
+                role:'student'
             }
         });
 
