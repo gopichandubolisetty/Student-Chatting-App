@@ -17,10 +17,28 @@ const roomRoutes = require('./routes/roomRoutes');
 const app = express();
 const httpServer = http.createServer(app);
 
+// ─── Allowed origins (local dev + deployed S3 frontend) ──────────────────────
+const ALLOWED_ORIGINS = [
+  'http://student-chat-hub-frontend.s3-website-ap-southeast-2.amazonaws.com',
+  'http://localhost:5173',
+  // Also allow CLIENT_URL from env if set to something else
+  ...(process.env.CLIENT_URL ? [process.env.CLIENT_URL] : []),
+].filter((v, i, a) => a.indexOf(v) === i); // deduplicate
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    // Allow requests with no origin (e.g. mobile apps, curl, Postman)
+    if (!origin) return callback(null, true);
+    if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
+    callback(new Error(`CORS: origin '${origin}' is not allowed.`));
+  },
+  credentials: true,
+};
+
 // ─── Socket.io ────────────────────────────────────────────────────────────────
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
+    origin: ALLOWED_ORIGINS,
     methods: ['GET', 'POST'],
     credentials: true,
   },
@@ -30,12 +48,7 @@ const io = new Server(httpServer, {
 app.set('io', io);
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
-app.use(
-  cors({
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
-    credentials: true,
-  })
-);
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
