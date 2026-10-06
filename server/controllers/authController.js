@@ -2,8 +2,10 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const nodemailer = require('nodemailer');
 const mongoose = require('mongoose');
+const { PutCommand, GetCommand, DeleteCommand } = require('@aws-sdk/lib-dynamodb');
 const Admin = require('../models/Admin');
 const generateOTP = require('../utils/generateOTP');
+const { docClient, OTP_TABLE_NAME } = require('../config/dynamodb');
 
 // ─── Helper: issue JWT cookie ───────────────────────────────────────────────
 
@@ -105,6 +107,20 @@ const adminRequestOTP = async (req, res) => {
     await admin.save();
     console.log(`[OTP REQUEST] OTP generated and saved (expires: ${otpExpiry.toISOString()})`);
 
+    // DynamoDB: Write OTP item to CampusConnect-OTP (expires in 5 minutes / 300 seconds)
+    const expiresAt = Math.floor(Date.now() / 1000) + 300;
+    await docClient.send(
+      new PutCommand({
+        TableName: OTP_TABLE_NAME,
+        Item: {
+          email: admin.email,
+          hashedOtp,
+          expiresAt,
+        },
+      })
+    );
+    console.log('[DynamoDB] OTP written for: ' + email);
+
     // Send email
     try {
       // DEBUG 2 — log right before sending
@@ -167,38 +183,60 @@ const adminVerifyOTP = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Email and OTP are required.' });
     }
 
-    const admin = await Admin.findOne({ email: email.toLowerCase() }).select('+otp +otpExpiresAt');
+    const normalizedEmail = email.toLowerCase().trim();
 
-    if (!admin || !admin.otp || !admin.otpExpiresAt) {
+    // ─── DynamoDB: Verify OTP as source of truth ───────────────────────────
+    const { Item: otpItem } = await docClient.send(
+      new GetCommand({
+        TableName: OTP_TABLE_NAME,
+        Key: { email: normalizedEmail },
+      })
+    );
+
+    if (!otpItem || !otpItem.hashedOtp || !otpItem.expiresAt) {
       return res.status(401).json({ success: false, message: 'Invalid OTP or OTP has expired.' });
     }
 
-    // Check expiry
-    if (new Date() > admin.otpExpiresAt) {
-      admin.otp = undefined;
-      admin.otpExpiresAt = undefined;
-      await admin.save();
+    // Check expiry against DynamoDB expiresAt (Unix epoch seconds)
+    const currentUnixTime = Math.floor(Date.now() / 1000);
+    if (currentUnixTime > otpItem.expiresAt) {
       return res.status(401).json({ success: false, message: 'OTP has expired. Please request a new one.' });
     }
 
-    // Compare OTP
-    const isMatch = await bcrypt.compare(otp.toString(), admin.otp);
+    // Compare submitted OTP against the stored hash in DynamoDB
+    const isMatch = await bcrypt.compare(otp.toString(), otpItem.hashedOtp);
     if (!isMatch) {
       return res.status(401).json({ success: false, message: 'Invalid OTP.' });
     }
 
-    // Clear OTP after successful use
+    // Fetch admin details from MongoDB to issue JWT and user session
+    const admin = await Admin.findOne({ email: normalizedEmail }).select('+otp +otpExpiresAt');
+    if (!admin) {
+      return res.status(401).json({ success: false, message: 'Admin not found.' });
+    }
+
+    // Clear MongoDB OTP fields and record login timestamp
     admin.otp = undefined;
     admin.otpExpiresAt = undefined;
     admin.lastLoginAt = new Date();
     await admin.save();
 
+    // Issue JWT cookie as before
     issueToken(res, {
       id: admin._id,
       name: admin.name,
       email: admin.email,
       role: 'admin',
     });
+
+    // Remove verified OTP item from DynamoDB
+    await docClient.send(
+      new DeleteCommand({
+        TableName: OTP_TABLE_NAME,
+        Key: { email: normalizedEmail },
+      })
+    );
+    console.log('[DynamoDB] OTP verified and deleted for: ' + email);
 
     return res.status(200).json({
       success: true,
