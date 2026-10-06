@@ -65,6 +65,11 @@ const adminRequestOTP = async (req, res) => {
   try {
     const { email } = req.body;
 
+    // DEBUG 1 — log the email received on entry
+    console.log(`\n[OTP REQUEST] Email received: ${email}`);
+    console.log(`[OTP REQUEST] EMAIL_USER env: ${process.env.EMAIL_USER}`);
+    console.log(`[OTP REQUEST] NODE_ENV: ${process.env.NODE_ENV}`);
+
     if (!email) {
       return res.status(400).json({ success: false, message: 'Email is required.' });
     }
@@ -78,8 +83,11 @@ const adminRequestOTP = async (req, res) => {
     const admin = await Admin.findOne({ email: email.toLowerCase() }).select('+otp +otpExpiresAt');
 
     if (!admin) {
+      console.log(`[OTP REQUEST] No admin found for email: ${email} — returning generic response`);
       return res.status(200).json(genericResponse);
     }
+
+    console.log(`[OTP REQUEST] Admin found: ${admin.name} <${admin.email}>`);
 
     // Generate OTP
     const otp = generateOTP();
@@ -89,11 +97,16 @@ const adminRequestOTP = async (req, res) => {
     admin.otp = hashedOtp;
     admin.otpExpiresAt = otpExpiry;
     await admin.save();
+    console.log(`[OTP REQUEST] OTP generated and saved (expires: ${otpExpiry.toISOString()})`);
 
     // Send email
     try {
+      // DEBUG 2 — log right before sending
+      console.log(`[OTP REQUEST] Attempting to send OTP email to: ${admin.email}`);
+      console.log(`[OTP REQUEST] Sending FROM: ${process.env.EMAIL_USER}`);
+
       const transporter = createTransporter();
-      await transporter.sendMail({
+      const result = await transporter.sendMail({
         from: `"CampusConnect Admin" <${process.env.EMAIL_USER}>`,
         to: admin.email,
         subject: 'CampusConnect Admin OTP',
@@ -110,17 +123,30 @@ const adminRequestOTP = async (req, res) => {
           </div>
         `,
       });
+
+      // DEBUG 4 — log success with messageId
+      console.log(`[OTP REQUEST] ✅ Email sent successfully, messageId: ${result.messageId}`);
+
     } catch (emailErr) {
-      console.error('Email send error:', emailErr);
-      // In dev, log OTP to console as fallback
+      // DEBUG 3 — log the FULL error object, not just .message
+      console.error('[OTP REQUEST] ❌ Email send FAILED — full error object below:');
+      console.error(emailErr);
+      console.error('[OTP REQUEST] Error name:', emailErr.name);
+      console.error('[OTP REQUEST] Error code:', emailErr.code);
+      console.error('[OTP REQUEST] Error command:', emailErr.command);
+      console.error('[OTP REQUEST] Response:', emailErr.response);
+      console.error('[OTP REQUEST] responseCode:', emailErr.responseCode);
+
+      // In dev, log OTP to console as fallback so login can still be tested
       if (process.env.NODE_ENV === 'development') {
-        console.log(`\n🔑 [DEV] OTP for ${admin.email}: ${otp}\n`);
+        console.log(`\n🔑 [DEV FALLBACK] OTP for ${admin.email}: ${otp}\n`);
       }
     }
 
     return res.status(200).json(genericResponse);
   } catch (err) {
-    console.error('Admin request OTP error:', err);
+    console.error('[OTP REQUEST] Outer catch — unexpected error:');
+    console.error(err);
     return res.status(500).json({ success: false, message: 'Server error. Please try again.' });
   }
 };
