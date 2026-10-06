@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const nodemailer = require('nodemailer');
+const mongoose = require('mongoose');
 const Admin = require('../models/Admin');
 const generateOTP = require('../utils/generateOTP');
 
@@ -79,6 +80,11 @@ const adminRequestOTP = async (req, res) => {
       success: true,
       message: 'If this email is registered, an OTP has been sent to it.',
     };
+
+    // ─── DB-level debug: verify what we're querying against ─────────────────
+    console.log('[OTP DEBUG] Querying for email:', JSON.stringify(email));
+    console.log('[OTP DEBUG] Mongoose connection DB name:', mongoose.connection.name);
+    console.log('[OTP DEBUG] Total admins in collection:', await Admin.countDocuments());
 
     const admin = await Admin.findOne({ email: email.toLowerCase() }).select('+otp +otpExpiresAt');
 
